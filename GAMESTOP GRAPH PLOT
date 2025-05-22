@@ -1,0 +1,88 @@
+!pip install yfinance
+!pip install bs4
+!pip install nbformat
+!pip install --upgrade plotly
+
+import yfinance as yf
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+def make_graph(stock_data, revenue_data, stock):
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, subplot_titles=("Historical Share Price", "Historical Revenue"), vertical_spacing = .3)
+    stock_data_specific = stock_data[stock_data.Date <= '2021-06-14']
+    revenue_data_specific = revenue_data[revenue_data.Date <= '2021-04-30']
+    fig.add_trace(go.Scatter(x=pd.to_datetime(stock_data_specific.Date, infer_datetime_format=True), y=stock_data_specific.Close.astype("float"), name="Share Price"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=pd.to_datetime(revenue_data_specific.Date, infer_datetime_format=True), y=revenue_data_specific.Revenue.astype("float"), name="Revenue"), row=2, col=1)
+    fig.update_xaxes(title_text="Date", row=1, col=1)
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+    fig.update_yaxes(title_text="Price ($US)", row=1, col=1)
+    fig.update_yaxes(title_text="Revenue ($US Millions)", row=2, col=1)
+    fig.update_layout(showlegend=False,
+    height=900,
+    title=stock,
+    xaxis_rangeslider_visible=True)
+    fig.show()
+    from IPython.display import display, HTML
+    fig_html = fig.to_html()
+    display(HTML(fig_html))
+
+
+# Part 1: Extract GameStop data from yfinance
+gme = yf.Ticker("GME")
+gme_data = gme.history(period="max")
+gme_data.reset_index(inplace=True)
+#print("Gamestop Historical Stock Data from yfinance:")
+#print(gme_data.head())
+#print(gme_data.info())
+
+# Part 2: Extract Gamestop revenue data using BeautifulSoup
+URL_2 = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-PY0220EN-SkillsNetwork/labs/project/stock.html"
+html_data_2 = requests.get(URL_2).text
+soup_2 = BeautifulSoup(html_data_2, "html.parser")
+
+gme_revenue_table = None
+for table in soup_2.find_all('table'):
+    if "Quarterly Revenue" in table.get_text():
+        gme_revenue_table = table
+        print("here")
+        break
+
+if gme_revenue_table:
+    rows = gme_revenue_table.find_all('tr')
+    dates = []
+    revenues = []
+
+    for row in rows[1:]:
+        cols = row.find_all('td')
+        if len(cols) >= 2:
+            date = cols[0].text.strip()
+            revenue = cols[1].text.strip()
+            dates.append(date)
+            revenues.append(revenue)
+
+    gme_revenue = pd.DataFrame({
+        'Date': dates,
+        'Revenue': revenues
+    })
+
+    #gme_revenue['Revenue'] = gme_revenue['Revenue'].str.replace('$', '', regex=False).str.replace(',', '', regex=False).astype(float)
+    gme_revenue['Date'] = pd.to_datetime(gme_revenue['Date'])
+    gme_revenue["Revenue"] = gme_revenue['Revenue'].str.replace('$',"")
+    gme_revenue["Revenue"] = gme_revenue['Revenue'].str.replace(',',"")
+    gme_revenue.dropna(inplace=True)
+    gme_revenue = gme_revenue[gme_revenue['Revenue'] != ""]
+    print("\nGamestop Revenue Data :")
+    #print(gme_revenue.head())
+    #print(gme_revenue.info())
+    print("\nlast 5 row of the Gamestop_revenue dataframe using the tail function :") 
+    print(gme_revenue.tail())
+
+else:
+    print("Could not find the Tesla Quarterly Revenue table on the Macrotrends page.")
+    print("Please inspect the HTML structure of the page to identify the correct table.")
+
+#make_graph(gme_data, gme_revenue, 'GME')
+make_graph(gme_data, gme_revenue, 'GameStop (GME) Stock Price and Revenue')
